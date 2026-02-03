@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>The Architect's Loom - Robby Freestyle</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #000; font-family: 'Space Grotesk', sans-serif; }
+        canvas { display: block; width: 100vw; height: 100vh; }
+        #hud {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            color: rgba(255, 0, 85, 0.6);
+            letter-spacing: 0.3em;
+            text-transform: uppercase;
+            font-size: 9px;
+            text-align: right;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+    <div id="hud">Experiment 02 // The Architect's Loom<br>Temporal Feedback: ACTIVE</div>
+    <canvas id="glCanvas"></canvas>
+    <script>
+        const canvas = document.getElementById('glCanvas');
+        const gl = canvas.getContext('webgl2');
+
+        const vs = `#version 300 es
+            void main() {
+                gl_Position = vec4(vec2((gl_VertexID << 1) & 2, gl_VertexID & 2) * 2.0 - 1.0, 0.0, 1.0);
+            }
+        `;
+
+        const fs = `#version 300 es
+        precision highp float;
+        out vec4 fragColor;
+        uniform vec2 u_res;
+        uniform float u_time;
+        uniform vec2 u_mouse;
+
+        mat2 rot(float a) {
+            float s = sin(a), c = cos(a);
+            return mat2(c, -s, s, c);
+        }
+
+        float sdBox(vec3 p, vec3 b) {
+            vec3 q = abs(p) - b;
+            return length(max(q, 0.0)) + min(max(q.x, max(q.y, q.z)), 0.0);
+        }
+
+        // The Fractal Loom
+        float map(vec3 p) {
+            p.z += u_time * 0.5;
+            p.xy *= rot(u_time * 0.1 + p.z * 0.1);
+            
+            float d = 1e10;
+            vec3 q = p;
+            
+            for(int i=0; i<4; i++) {
+                q = abs(q) - 0.5;
+                q.xy *= rot(0.5);
+                q.yz *= rot(0.2);
+                d = min(d, sdBox(q, vec3(0.1, 0.1, 8.0)));
+            }
+            
+            return d;
+        }
+
+        void main() {
+            vec2 uv = (gl_FragCoord.xy * 2.0 - u_res) / min(u_res.x, u_res.y);
+            vec2 m = (u_mouse * 2.0 - u_res) / min(u_res.x, u_res.y);
+            
+            vec3 ro = vec3(0, 0, -3);
+            vec3 rd = normalize(vec3(uv, 1.5));
+            
+            // Raymarching
+            float t = 0.0;
+            float glow = 0.0;
+            for(int i=0; i<64; i++) {
+                vec3 p = ro + rd * t;
+                float d = map(p);
+                if(d < 0.001 || t > 20.0) break;
+                t += d * 0.5;
+                glow += 0.1 / (d * d + 0.01);
+            }
+            
+            vec3 color = vec3(0.0);
+            if(t < 20.0) {
+                color = vec3(0.05, 0.08, 0.15);
+            }
+            
+            // Neon Threads
+            vec3 pulse = vec3(0.1, 0.4, 0.8) * glow * 0.005;
+            pulse = mix(pulse, vec3(1.0, 0.0, 0.3), sin(u_time + uv.y * 10.0) * 0.5 + 0.5);
+            
+            color += pulse;
+            
+            // Signal Noise
+            float n = fract(sin(dot(uv, vec2(12.9898, 78.233))) * 43758.5453);
+            color += n * 0.03;
+            
+            fragColor = vec4(pow(color, vec3(0.8)), 1.0);
+        }
+        `;
+
+        function createShader(gl, type, source) {
+            const s = gl.createShader(type);
+            gl.shaderSource(s, source);
+            gl.compileShader(s);
+            if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) {
+                console.error(gl.getShaderInfoLog(s));
+            }
+            return s;
+        }
+
+        const program = gl.createProgram();
+        gl.attachShader(program, createShader(gl, gl.VERTEX_SHADER, vs));
+        gl.attachShader(program, createShader(gl, gl.FRAGMENT_SHADER, fs));
+        gl.linkProgram(program);
+        gl.useProgram(program);
+
+        const uRes = gl.getUniformLocation(program, 'u_res');
+        const uTime = gl.getUniformLocation(program, 'u_time');
+        const uMouse = gl.getUniformLocation(program, 'u_mouse');
+
+        let mx = 0, my = 0;
+        window.addEventListener('mousemove', e => {
+            mx = e.clientX;
+            my = window.innerHeight - e.clientY;
+        });
+
+        function render(t) {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            gl.viewport(0, 0, canvas.width, canvas.height);
+            gl.uniform2f(uRes, canvas.width, canvas.height);
+            gl.uniform1f(uTime, t * 0.001);
+            gl.uniform2f(uMouse, mx, my);
+            gl.drawArrays(gl.TRIANGLES, 0, 3);
+            requestAnimationFrame(render);
+        }
+        requestAnimationFrame(render);
+    </script>
+</body>
+</html>

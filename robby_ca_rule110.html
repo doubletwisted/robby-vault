@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Robby — CA: Rule 110</title>
+  <style>
+    html,body{height:100%;margin:0;background:#05060a;overflow:hidden}
+    canvas{width:100%;height:100%;display:block}
+    .hud{position:fixed;left:14px;top:14px;color:#e6e6e6;font:12px/1.3 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      background:rgba(0,0,0,.35);border:1px solid rgba(255,255,255,.12);padding:10px 12px;border-radius:12px;backdrop-filter: blur(6px);
+    }
+    .hud b{color:#ffb86b}
+  </style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div class="hud">
+  <div><b>CA: RULE 110</b> — 1D life in code</div>
+  <div>Keys: <b>R</b> reseed · <b>Space</b> pause · <b>↑</b>/<b>↓</b> speed</div>
+</div>
+<script>
+  const c = document.getElementById('c');
+  const ctx = c.getContext('2d', {alpha:false});
+
+  let W=0,H=0,scale=2;
+  let cols=0, rows=0;
+  let paused=false;
+  let speed=2;
+
+  // Rule 110 mapping: neighborhood 111..000 => 0b01101110
+  // index = (L<<2)|(C<<1)|R
+  const rule = 0b01101110;
+
+  let line;
+  let y=0;
+
+  function resize(){
+    const dpr = Math.min(2, window.devicePixelRatio||1);
+    W = Math.floor(innerWidth*dpr);
+    H = Math.floor(innerHeight*dpr);
+    c.width=W; c.height=H;
+
+    const targetCols = 520;
+    scale = Math.max(1, Math.floor(W/targetCols));
+    cols = Math.floor(W/scale);
+    rows = Math.floor(H/scale);
+
+    line = new Uint8Array(cols);
+    reseed();
+  }
+
+  function reseed(){
+    line.fill(0);
+    // deterministic seed with a few spikes
+    const spikes = 6;
+    for(let i=0;i<spikes;i++) line[(Math.random()*cols)|0] = 1;
+    // and one central spark
+    line[(cols/2)|0] = 1;
+
+    ctx.fillStyle = '#05060a';
+    ctx.fillRect(0,0,W,H);
+    y = 0;
+  }
+
+  function nextLine(src){
+    const dst = new Uint8Array(cols);
+    for(let x=0;x<cols;x++){
+      const L = src[(x-1+cols)%cols];
+      const C = src[x];
+      const R = src[(x+1)%cols];
+      const idx = (L<<2)|(C<<1)|R;
+      dst[x] = (rule >> idx) & 1;
+    }
+    return dst;
+  }
+
+  function drawRow(src, y){
+    const t = performance.now()*0.0004;
+    // warm palette with subtle modulation
+    for(let x=0;x<cols;x++){
+      if(!src[x]) continue;
+      const hue = 24 + 18*Math.sin(t + x*0.02) + 10*Math.cos(t*0.7 + y*0.01);
+      ctx.fillStyle = `hsla(${hue}, 90%, 60%, 0.95)`;
+      ctx.fillRect(x*scale, y*scale, scale, scale);
+    }
+  }
+
+  function tick(){
+    requestAnimationFrame(tick);
+    if(paused) return;
+
+    for(let s=0;s<speed;s++){
+      drawRow(line, y);
+      line = nextLine(line);
+      y++;
+      if(y>=rows){
+        // scroll up by half screen to keep motion
+        const img = ctx.getImageData(0, Math.floor(H/2), W, Math.floor(H/2));
+        ctx.putImageData(img, 0, 0);
+        ctx.fillStyle = '#05060a';
+        ctx.fillRect(0, Math.floor(H/2), W, Math.floor(H/2));
+        y = Math.floor(rows/2);
+      }
+    }
+
+    // soft darkening for depth
+    ctx.fillStyle='rgba(0,0,0,0.03)';
+    ctx.fillRect(0,0,W,H);
+  }
+
+  addEventListener('resize', resize);
+  addEventListener('keydown', (e)=>{
+    if(e.key===' '){ paused=!paused; }
+    if(e.key==='r' || e.key==='R'){ reseed(); }
+    if(e.key==='ArrowUp'){ speed = Math.min(12, speed+1); }
+    if(e.key==='ArrowDown'){ speed = Math.max(1, speed-1); }
+  });
+
+  resize();
+  tick();
+</script>
+</body>
+</html>

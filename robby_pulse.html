@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>The Pulse v2 — Robby</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #000; font-family: 'Space Grotesk', sans-serif; }
+        canvas { display: block; width: 100vw; height: 100vh; }
+        #hud {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: rgba(255, 255, 255, 0.18);
+            letter-spacing: 0.5em;
+            text-transform: uppercase;
+            font-size: 8px;
+            pointer-events: none;
+            text-align: center;
+            mix-blend-mode: screen;
+        }
+    </style>
+</head>
+<body>
+    <div id="gl2warn" style="display:none;position:fixed;inset:0;background:#000;color:#e6e6e6;z-index:9999;font:14px/1.4 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;padding:20px">
+      <div style="max-width:820px">
+        <div style="color:#ff4d4d;letter-spacing:.2em;text-transform:uppercase;font-size:12px">WebGL2 required</div>
+        <h1 style="margin:10px 0 8px 0;font-size:18px">This piece needs WebGL2.</h1>
+        <div style="opacity:.8">If you're on iOS Safari or an older browser/device, it may not support WebGL2. Try Chrome/Edge on desktop, or update iOS.</div>
+      </div>
+    </div>
+
+    <div id="hud">Experiment 05 // The Pulse<br>Signal Synchronized</div>
+    <canvas id="glCanvas"></canvas>
+    <script>
+        const canvas = document.getElementById('glCanvas');
+        const gl = canvas.getContext('webgl2');
+        if (!gl) {
+            const w = document.getElementById('gl2warn');
+            if (w) w.style.display = 'block';
+            throw new Error('WebGL2 not available');
+        }
+
+        const vs = `#version 300 es
+            void main() {
+                gl_Position = vec4(vec2((gl_VertexID << 1) & 2, gl_VertexID & 2) * 2.0 - 1.0, 0.0, 1.0);
+            }
+        `;
+
+        const fs = `#version 300 es
+        precision highp float;
+        out vec4 fragColor;
+        uniform vec2 u_res;
+        uniform float u_time;
+        uniform vec2 u_mouse;
+
+        float hash(vec2 p) {
+            p = fract(p * vec2(123.34, 456.21));
+            p += dot(p, p + 45.32);
+            return fract(p.x * p.y);
+        }
+
+        float noise(vec2 p){
+            vec2 i=floor(p);
+            vec2 f=fract(p);
+            f=f*f*(3.0-2.0*f);
+            float a=hash(i);
+            float b=hash(i+vec2(1,0));
+            float c=hash(i+vec2(0,1));
+            float d=hash(i+vec2(1,1));
+            return mix(mix(a,b,f.x), mix(c,d,f.x), f.y);
+        }
+
+        float fbm(vec2 p){
+            float v=0.0;
+            float a=0.5;
+            for(int i=0;i<6;i++){
+                v += a*noise(p);
+                p *= 2.0;
+                a *= 0.5;
+            }
+            return v;
+        }
+
+        vec3 palette(float t){
+            vec3 a=vec3(0.05,0.08,0.10);
+            vec3 b=vec3(0.55,0.45,0.65);
+            vec3 c=vec3(0.9,0.7,0.5);
+            vec3 d=vec3(0.2,0.3,0.6);
+            return a + b*cos(6.28318*(c*t + d));
+        }
+
+        void main() {
+            vec2 uv = (gl_FragCoord.xy * 2.0 - u_res) / min(u_res.x, u_res.y);
+            vec2 m = (u_mouse * 2.0 - u_res) / min(u_res.x, u_res.y);
+
+            float t = u_time;
+            float d = length(uv);
+
+            // Warp space slightly so it feels alive
+            vec2 w = uv;
+            w += 0.06*vec2(fbm(uv*2.0 + t*0.6), fbm(uv*2.0 - t*0.55)) - 0.03;
+
+            // Multi-ring pulse system
+            float rings = 0.0;
+            for(int i=0;i<5;i++){
+                float fi = float(i);
+                float sp = 0.55 + 0.18*fi;
+                float ph = fract(t*sp - d*(0.55 + 0.12*fi));
+                float r = smoothstep(0.06, 0.0, abs(ph-0.12));
+                rings += r*(0.35 + 0.2*fi);
+            }
+
+            // Particle field that reacts to rings
+            vec2 g = uv * 46.0;
+            vec2 gv = fract(g) - 0.5;
+            vec2 id = floor(g);
+            float h = hash(id);
+            float pSize = mix(0.015, 0.08, h) * (0.25 + 0.75*smoothstep(0.0,1.0,rings));
+            float particle = smoothstep(pSize, pSize - 0.012, length(gv));
+
+            // Central core + mouse gravity
+            float core = 0.012 / (d + 0.008);
+            float md = length(uv - m*0.35);
+            float mGlow = 0.018 / (md + 0.02);
+
+            // Background texture
+            float haze = fbm(w*1.6 + t*0.12);
+
+            vec3 col = vec3(0.0);
+            col += palette(haze*0.35 + 0.05) * (0.10 + 0.30*haze);
+            col += vec3(0.45,0.75,1.0) * rings * 0.28;
+            col += vec3(0.75,0.85,1.0) * particle * (0.4 + 0.8*h);
+            col += vec3(1.0) * core * 0.9;
+            col += vec3(0.6,0.9,1.0) * mGlow * 0.35;
+
+            // Scanline + subtle chroma
+            float scan = sin(gl_FragCoord.y*0.9 + t*22.0) * 0.012;
+            col += scan;
+
+            // Tonemap-ish
+            col = col / (col + vec3(1.0));
+            col = pow(col, vec3(0.92));
+
+            fragColor = vec4(col, 1.0);
+        }
+        `;
+
+        function createShader(gl, type, source) {
+            const s = gl.createShader(type);
+            gl.shaderSource(s, source);
+            gl.compileShader(s);
+            if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) {
+                const err = gl.getShaderInfoLog(s) || 'Unknown shader compile error';
+                console.error(err);
+                alert('Shader compile failed:\n' + err);
+                throw new Error(err);
+            }
+            return s;
+        }
+
+        const program = gl.createProgram();
+        gl.attachShader(program, createShader(gl, gl.VERTEX_SHADER, vs));
+        gl.attachShader(program, createShader(gl, gl.FRAGMENT_SHADER, fs));
+        gl.linkProgram(program);
+        if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+            const err = gl.getProgramInfoLog(program) || 'Unknown program link error';
+            console.error(err);
+            alert('Program link failed:\n' + err);
+            throw new Error(err);
+        }
+        gl.useProgram(program);
+
+        const uRes = gl.getUniformLocation(program, 'u_res');
+        const uTime = gl.getUniformLocation(program, 'u_time');
+        const uMouse = gl.getUniformLocation(program, 'u_mouse');
+
+        let mx = 0, my = 0;
+        window.addEventListener('mousemove', e => {
+            mx = e.clientX;
+            my = window.innerHeight - e.clientY;
+        });
+
+        function render(t) {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            gl.viewport(0, 0, canvas.width, canvas.height);
+            gl.uniform2f(uRes, canvas.width, canvas.height);
+            gl.uniform1f(uTime, t * 0.001);
+            gl.uniform2f(uMouse, mx, my);
+            gl.drawArrays(gl.TRIANGLES, 0, 3);
+            requestAnimationFrame(render);
+        }
+        requestAnimationFrame(render);
+    </script>
+</body>
+</html>

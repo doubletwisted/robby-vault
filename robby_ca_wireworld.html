@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Robby — CA: Wireworld</title>
+  <style>
+    html,body{height:100%;margin:0;background:#05060a;overflow:hidden}
+    canvas{width:100%;height:100%;display:block;image-rendering:pixelated}
+    .hud{position:fixed;left:14px;top:14px;color:#e6e6e6;font:12px/1.3 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      background:rgba(0,0,0,.35);border:1px solid rgba(255,255,255,.12);padding:10px 12px;border-radius:12px;backdrop-filter: blur(6px);
+    }
+    .hud b{color:#ffb86b}
+  </style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div class="hud">
+  <div><b>CA: WIREWORLD</b> — conductors & electrons</div>
+  <div>Keys: <b>R</b> reseed · <b>Space</b> pause · click = drop spark</div>
+</div>
+<script>
+  // States: 0 empty, 1 head, 2 tail, 3 conductor
+  const c = document.getElementById('c');
+  const ctx = c.getContext('2d', {alpha:false});
+
+  let W=0,H=0,dpr=1,scale=3,gw=0,gh=0;
+  let a,b;
+  let paused=false;
+
+  function resize(){
+    dpr = Math.min(2, window.devicePixelRatio||1);
+    W = Math.floor(innerWidth*dpr);
+    H = Math.floor(innerHeight*dpr);
+    c.width=W; c.height=H;
+    const target=260;
+    scale = Math.max(2, Math.floor(Math.min(W,H)/target));
+    gw = Math.floor(W/scale);
+    gh = Math.floor(H/scale);
+    a = new Uint8Array(gw*gh);
+    b = new Uint8Array(gw*gh);
+    seed();
+  }
+
+  function idx(x,y){
+    x = (x+gw)%gw;
+    y = (y+gh)%gh;
+    return x+y*gw;
+  }
+
+  function seed(){
+    a.fill(0);
+
+    // random conductor maze-ish by carving rectangles
+    for(let k=0;k<32;k++){
+      const x0=(Math.random()*gw)|0;
+      const y0=(Math.random()*gh)|0;
+      const w=20+((Math.random()*80)|0);
+      const h=10+((Math.random()*50)|0);
+      for(let y=y0;y<y0+h && y<gh;y++){
+        for(let x=x0;x<x0+w && x<gw;x++) a[idx(x,y)] = 3;
+      }
+    }
+
+    // inject a few electron heads
+    for(let i=0;i<200;i++){
+      const x=(Math.random()*gw)|0;
+      const y=(Math.random()*gh)|0;
+      if(a[idx(x,y)]===3) a[idx(x,y)] = 1;
+    }
+
+    drawAll();
+  }
+
+  function step(){
+    for(let y=0;y<gh;y++){
+      for(let x=0;x<gw;x++){
+        const i=x+y*gw;
+        const v=a[i];
+        if(v===0){ b[i]=0; continue; }
+        if(v===1){ b[i]=2; continue; } // head -> tail
+        if(v===2){ b[i]=3; continue; } // tail -> conductor
+
+        // conductor: becomes head if 1 or 2 head neighbors
+        let n=0;
+        for(let oy=-1;oy<=1;oy++){
+          for(let ox=-1;ox<=1;ox++){
+            if(!ox&&!oy) continue;
+            n += (a[idx(x+ox,y+oy)]===1)?1:0;
+          }
+        }
+        b[i] = (n===1 || n===2) ? 1 : 3;
+      }
+    }
+    const t=a; a=b; b=t;
+  }
+
+  function color(v){
+    if(v===0) return '#05060a';
+    if(v===1) return '#68d6ff';
+    if(v===2) return '#ff4d4d';
+    return '#ffb86b';
+  }
+
+  function drawAll(){
+    for(let y=0;y<gh;y++){
+      for(let x=0;x<gw;x++){
+        const v=a[x+y*gw];
+        ctx.fillStyle = color(v);
+        ctx.fillRect(x*scale,y*scale,scale,scale);
+      }
+    }
+  }
+
+  function loop(){
+    requestAnimationFrame(loop);
+    if(paused) return;
+    step();
+    drawAll();
+    ctx.fillStyle='rgba(0,0,0,0.04)';
+    ctx.fillRect(0,0,W,H);
+  }
+
+  addEventListener('keydown',(e)=>{
+    if(e.key===' ') paused=!paused;
+    if(e.key==='r'||e.key==='R') seed();
+  });
+
+  addEventListener('pointerdown',(e)=>{
+    const rect=c.getBoundingClientRect();
+    const px=(e.clientX-rect.left)/rect.width;
+    const py=(e.clientY-rect.top)/rect.height;
+    const x=Math.floor(px*gw), y=Math.floor(py*gh);
+    // drop a spark: make a small head cluster on conductors
+    for(let oy=-2;oy<=2;oy++){
+      for(let ox=-2;ox<=2;ox++){
+        const j=idx(x+ox,y+oy);
+        if(a[j]===3 && Math.random()<0.5) a[j]=1;
+      }
+    }
+  });
+
+  addEventListener('resize', resize);
+  resize();
+  loop();
+</script>
+</body>
+</html>

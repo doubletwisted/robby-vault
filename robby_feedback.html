@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Temporal Feedback - Robby Freestyle</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300&display=swap');
+        body { margin: 0; overflow: hidden; background: #000; font-family: 'Space Grotesk', sans-serif; }
+        canvas { display: block; width: 100vw; height: 100vh; }
+        #hud {
+            position: fixed;
+            bottom: 40px;
+            left: 40px;
+            color: rgba(255, 0, 85, 0.4);
+            letter-spacing: 0.6em;
+            text-transform: uppercase;
+            font-size: 8px;
+            pointer-events: none;
+            border-left: 2px solid rgba(255, 0, 85, 0.3);
+            padding-left: 25px;
+            line-height: 2.0;
+        }
+        #debug {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            color: #f0f;
+            font-size: 10px;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+    <div id="hud">
+        Experiment 13 // Temporal Feedback<br>
+        Buffer: Accumulation A/B<br>
+        Trail Persistence: 0.92
+    </div>
+    <div id="debug"></div>
+    <canvas id="glCanvas"></canvas>
+    <script>
+        const debug = document.getElementById('debug');
+        function log(msg) { debug.innerText += msg + '\n'; console.log(msg); }
+
+        window.onerror = (e) => log('Error: ' + e);
+
+        const canvas = document.getElementById('glCanvas');
+        const gl = canvas.getContext('webgl2', { antialias: false });
+
+        if (!gl) {
+            log('WebGL2 not available');
+        }
+
+        const vs = `#version 300 es
+            void main() {
+                gl_Position = vec4(vec2((gl_VertexID << 1) & 2, gl_VertexID & 2) * 2.0 - 1.0, 0.0, 1.0);
+            }
+        `;
+
+        const fsMain = `#version 300 es
+        precision highp float;
+        out vec4 fragColor;
+        uniform vec2 u_res;
+        uniform float u_time;
+        uniform vec2 u_mouse;
+        uniform sampler2D u_prev;
+
+        void main() {
+            vec2 uv = gl_FragCoord.xy / u_res;
+            vec2 aspect = vec2(u_res.x/u_res.y, 1.0);
+            vec2 p = (uv * 2.0 - 1.0) * aspect;
+            vec2 m = (u_mouse / u_res * 2.0 - 1.0) * aspect;
+
+            float d = length(p - m * 0.5);
+            float core = 0.02 / (d + 0.01);
+            
+            vec2 prevUV = uv - 0.5;
+            prevUV *= 0.995; 
+            prevUV += 0.5;
+            
+            vec4 prevCol = texture(u_prev, prevUV);
+            vec3 color = core * vec3(0.2, 0.5, 1.0);
+            color = max(color, prevCol.rgb * 0.94);
+            
+            fragColor = vec4(color, 1.0);
+        }
+        `;
+
+        function createShader(gl, type, source) {
+            const s = gl.createShader(type);
+            gl.shaderSource(s, source);
+            gl.compileShader(s);
+            if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) {
+                log('Shader compile error: ' + gl.getShaderInfoLog(s));
+            }
+            return s;
+        }
+
+        const program = gl.createProgram();
+        gl.attachShader(program, createShader(gl, gl.VERTEX_SHADER, vs));
+        gl.attachShader(program, createShader(gl, gl.FRAGMENT_SHADER, fsMain));
+        gl.linkProgram(program);
+        if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+            log('Program link error: ' + gl.getProgramInfoLog(program));
+        }
+
+        const textures = [gl.createTexture(), gl.createTexture()];
+        const fbos = [gl.createFramebuffer(), gl.createFramebuffer()];
+
+        function initFBO(idx, w, h) {
+            gl.bindTexture(gl.TEXTURE_2D, textures[idx]);
+            gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+
+            gl.bindFramebuffer(gl.FRAMEBUFFER, fbos[idx]);
+            gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, textures[idx], 0);
+            
+            const status = gl.checkFramebufferStatus(gl.FRAMEBUFFER);
+            if (status !== gl.FRAMEBUFFER_COMPLETE) {
+                log('FBO error: ' + status);
+            }
+        }
+
+        const uRes = gl.getUniformLocation(program, 'u_res');
+        const uTime = gl.getUniformLocation(program, 'u_time');
+        const uMouse = gl.getUniformLocation(program, 'u_mouse');
+        const uPrev = gl.getUniformLocation(program, 'u_prev');
+
+        let current = 0;
+        let mx = 0, my = 0;
+        window.addEventListener('mousemove', e => {
+            mx = e.clientX; my = window.innerHeight - e.clientY;
+        });
+        window.addEventListener('touchmove', e => {
+            mx = e.touches[0].clientX; my = window.innerHeight - e.touches[0].clientY;
+        });
+
+        function render(t) {
+            const w = window.innerWidth;
+            const h = window.innerHeight;
+            
+            if (canvas.width !== w || canvas.height !== h) {
+                canvas.width = w;
+                canvas.height = h;
+                initFBO(0, w, h);
+                initFBO(1, w, h);
+            }
+
+            gl.useProgram(program);
+            gl.uniform2f(uRes, w, h);
+            gl.uniform1f(uTime, t * 0.001);
+            gl.uniform2f(uMouse, mx, my);
+
+            gl.activeTexture(gl.TEXTURE0);
+            gl.bindTexture(gl.TEXTURE_2D, textures[1 - current]);
+            gl.uniform1i(uPrev, 0);
+
+            gl.viewport(0, 0, w, h);
+
+            gl.bindFramebuffer(gl.FRAMEBUFFER, fbos[current]);
+            gl.drawArrays(gl.TRIANGLES, 0, 3);
+
+            gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+            gl.drawArrays(gl.TRIANGLES, 0, 3);
+
+            current = 1 - current;
+            requestAnimationFrame(render);
+        }
+        log('Initialization complete');
+        requestAnimationFrame(render);
+    </script>
+</body>
+</html>

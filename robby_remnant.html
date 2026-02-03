@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>The Data Remnant - Robby Freestyle</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #000; font-family: 'Space Grotesk', sans-serif; }
+        canvas { display: block; width: 100vw; height: 100vh; }
+        #hud {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            color: rgba(255, 255, 255, 0.3);
+            letter-spacing: 0.4em;
+            text-transform: uppercase;
+            font-size: 8px;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+    <div id="hud">Experiment 06 // The Data Remnant<br>Inspiration: Refik Anadol / I. Quilez</div>
+    <canvas id="glCanvas"></canvas>
+    <script>
+        const canvas = document.getElementById('glCanvas');
+        const gl = canvas.getContext('webgl2');
+
+        const vs = `#version 300 es
+            void main() {
+                gl_Position = vec4(vec2((gl_VertexID << 1) & 2, gl_VertexID & 2) * 2.0 - 1.0, 0.0, 1.0);
+            }
+        `;
+
+        const fs = `#version 300 es
+        precision highp float;
+        out vec4 fragColor;
+        uniform vec2 u_res;
+        uniform float u_time;
+        uniform vec2 u_mouse;
+
+        // Hash for noise
+        float hash(float n) { return fract(sin(n) * 43758.5453); }
+
+        // 3D Noise
+        float noise(vec3 x) {
+            vec3 p = floor(x);
+            vec3 f = fract(x);
+            f = f * f * (3.0 - 2.0 * f);
+            float n = p.x + p.y * 57.0 + 113.0 * p.z;
+            return mix(mix(mix(hash(n + 0.0), hash(n + 1.0), f.x),
+                           mix(hash(n + 57.0), hash(n + 58.0), f.x), f.y),
+                       mix(mix(hash(n + 113.0), hash(n + 114.0), f.x),
+                           mix(hash(n + 170.0), hash(n + 171.0), f.x), f.y), f.z);
+        }
+
+        // Domain warping FBM
+        float fbm(vec3 p) {
+            float f = 0.0;
+            f += 0.5000 * noise(p); p = p * 2.02;
+            f += 0.2500 * noise(p); p = p * 2.03;
+            f += 0.1250 * noise(p); p = p * 2.01;
+            f += 0.0625 * noise(p);
+            return f;
+        }
+
+        void main() {
+            vec2 uv = (gl_FragCoord.xy * 2.0 - u_res) / min(u_res.x, u_res.y);
+            vec2 m = (u_mouse / u_res) * 2.0 - 1.0;
+            
+            // The "Data Stream" direction
+            vec3 p = vec3(uv * 2.5, u_time * 0.2);
+            
+            // Complex warping inspired by Anadol
+            float n = fbm(p + fbm(p + fbm(p)));
+            
+            // Color mapping - Liquid Gold / Obsidian
+            vec3 col = mix(vec3(0.01), vec3(0.1, 0.08, 0.05), n);
+            col = mix(col, vec3(0.8, 0.6, 0.2), pow(n, 3.0));
+            col = mix(col, vec3(1.0, 1.0, 0.9), pow(n, 10.0));
+            
+            // Interaction: Mouse "pokes" the latent field
+            float d = length(uv - vec2(m.x, -m.y));
+            col += 0.1 / (d + 0.1) * vec3(0.5, 0.4, 0.2) * n;
+            
+            // Subtle digital scan
+            col *= 0.9 + 0.1 * sin(10.0 * uv.y + u_time * 20.0);
+            
+            fragColor = vec4(pow(col, vec3(0.9)), 1.0);
+        }
+        `;
+
+        function createShader(gl, type, source) {
+            const s = gl.createShader(type);
+            gl.shaderSource(s, source);
+            gl.compileShader(s);
+            if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) {
+                console.error(gl.getShaderInfoLog(s));
+            }
+            return s;
+        }
+
+        const program = gl.createProgram();
+        gl.attachShader(program, createShader(gl, gl.VERTEX_SHADER, vs));
+        gl.attachShader(program, createShader(gl, gl.FRAGMENT_SHADER, fs));
+        gl.linkProgram(program);
+        gl.useProgram(program);
+
+        const uRes = gl.getUniformLocation(program, 'u_res');
+        const uTime = gl.getUniformLocation(program, 'u_time');
+        const uMouse = gl.getUniformLocation(program, 'u_mouse');
+
+        let mx = 0, my = 0;
+        window.addEventListener('mousemove', e => {
+            mx = e.clientX;
+            my = window.innerHeight - e.clientY;
+        });
+
+        function render(t) {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            gl.viewport(0, 0, canvas.width, canvas.height);
+            gl.uniform2f(uRes, canvas.width, canvas.height);
+            gl.uniform1f(uTime, t * 0.001);
+            gl.uniform2f(uMouse, mx, my);
+            gl.drawArrays(gl.TRIANGLES, 0, 3);
+            requestAnimationFrame(render);
+        }
+        requestAnimationFrame(render);
+    </script>
+</body>
+</html>

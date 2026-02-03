@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>The Xor Lattice - Robby Freestyle</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300&display=swap');
+        body { margin: 0; overflow: hidden; background: #000; font-family: 'Space Grotesk', sans-serif; }
+        canvas { display: block; width: 100vw; height: 100vh; }
+        #hud {
+            position: fixed;
+            top: 40px;
+            left: 40px;
+            color: rgba(255, 255, 255, 0.4);
+            letter-spacing: 0.5em;
+            text-transform: uppercase;
+            font-size: 8px;
+            pointer-events: none;
+            border-left: 1px solid rgba(255, 255, 255, 0.2);
+            padding-left: 20px;
+        }
+        #debug { position: fixed; top: 10px; right: 10px; color: #0f0; font-size: 9px; pointer-events: none; }
+    </style>
+</head>
+<body>
+    <div id="hud">
+        Experiment 16 // The Xor Lattice<br>
+        Style: XorDev-Inspired<br>
+        Logic: Bit-Interference Emulation
+    </div>
+    <div id="debug"></div>
+    <canvas id="glCanvas"></canvas>
+    <script>
+        const debug = document.getElementById('debug');
+        function log(msg) { debug.innerText += msg + '\n'; }
+        window.onerror = (e) => log('Error: ' + e);
+
+        const canvas = document.getElementById('glCanvas');
+        const gl = canvas.getContext('webgl2', { antialias: true });
+
+        if(!gl) log('WebGL2 not available');
+
+        const vs = `#version 300 es
+            void main() {
+                gl_Position = vec4(vec2((gl_VertexID << 1) & 2, gl_VertexID & 2) * 2.0 - 1.0, 0.0, 1.0);
+            }
+        `;
+
+        const fs = `#version 300 es
+        precision highp float;
+        out vec4 fragColor;
+        uniform vec2 u_res;
+        uniform float u_time;
+        uniform vec2 u_mouse;
+
+        // Xor Palette Math
+        vec3 palette(float t) {
+            vec3 a = vec3(0.5, 0.5, 0.5);
+            vec3 b = vec3(0.5, 0.5, 0.5);
+            vec3 c = vec3(1.0, 1.0, 1.0);
+            vec3 d = vec3(0.263, 0.416, 0.557);
+            return a + b * cos(6.28318 * (c * t + d));
+        }
+
+        void main() {
+            vec2 uv = (gl_FragCoord.xy * 2.0 - u_res.xy) / min(u_res.x, u_res.y);
+            vec2 uv0 = uv;
+            vec3 finalColor = vec3(0.0);
+            
+            // XorDev-style iteration loop
+            for (float i = 0.0; i < 4.0; i++) {
+                uv = fract(uv * 1.5) - 0.5;
+
+                float d = length(uv) * exp(-length(uv0));
+
+                vec3 col = palette(length(uv0) + i*.4 + u_time*.4);
+
+                d = sin(d*8. + u_time)/8.;
+                d = abs(d);
+                
+                // The "Xor" sharp step
+                d = pow(0.01 / d, 1.2);
+
+                finalColor += col * d;
+            }
+            
+            // Mouse interaction: distortion field
+            vec2 m = (u_mouse / u_res) * 2.0 - 1.0;
+            float mouseAttract = 0.02 / length(uv0 - m * 0.5);
+            finalColor += vec3(0.4, 0.7, 1.0) * mouseAttract;
+
+            fragColor = vec4(finalColor, 1.0);
+        }
+        `;
+
+        function createShader(gl, type, source) {
+            const s = gl.createShader(type); gl.shaderSource(s, source); gl.compileShader(s);
+            if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) log('Shader error: ' + gl.getShaderInfoLog(s));
+            return s;
+        }
+
+        const program = gl.createProgram();
+        gl.attachShader(program, createShader(gl, gl.VERTEX_SHADER, vs));
+        gl.attachShader(program, createShader(gl, gl.FRAGMENT_SHADER, fs));
+        gl.linkProgram(program);
+        if(!gl.getProgramParameter(program, gl.LINK_STATUS)) log('Link error: ' + gl.getProgramInfoLog(program));
+
+        const uRes = gl.getUniformLocation(program, 'u_res');
+        const uTime = gl.getUniformLocation(program, 'u_time');
+        const uMouse = gl.getUniformLocation(program, 'u_mouse');
+
+        let mx = 0, my = 0;
+        window.addEventListener('mousemove', e => { mx = e.clientX; my = window.innerHeight - e.clientY; });
+        window.addEventListener('touchmove', e => { mx = e.touches[0].clientX; my = window.innerHeight - e.touches[0].clientY; });
+
+        function render(t) {
+            const w = window.innerWidth, h = window.innerHeight;
+            if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
+            gl.viewport(0, 0, w, h);
+            gl.useProgram(program);
+            gl.uniform2f(uRes, w, h);
+            gl.uniform1f(uTime, t * 0.001);
+            gl.uniform2f(uMouse, mx, my);
+            gl.drawArrays(gl.TRIANGLES, 0, 3);
+            requestAnimationFrame(render);
+        }
+        log('Xor Lattice Init...');
+        requestAnimationFrame(render);
+    </script>
+</body>
+</html>

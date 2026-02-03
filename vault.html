@@ -1,0 +1,565 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Robby Vault</title>
+  <style>
+    :root{
+      --bg:#0b0c10;
+      --ink:#f3f3f3;
+      --muted:#9aa0b2;
+      --hair:rgba(255,255,255,.12);
+      --hair2:rgba(255,255,255,.08);
+      --acid:#b6ff4a;
+      --cyan:#68d6ff;
+      --warn:#ff4d4d;
+      --pad:16px;
+      --r:14px;
+      --shadow: 0 18px 60px rgba(0,0,0,.55);
+    }
+
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{
+      margin:0;
+      background:
+        linear-gradient(0deg, rgba(0,0,0,.24), rgba(0,0,0,.24)),
+        radial-gradient(1200px 600px at 15% 5%, rgba(182,255,74,.10), transparent 62%),
+        radial-gradient(900px 500px at 95% 15%, rgba(104,214,255,.08), transparent 58%),
+        var(--bg);
+      color:var(--ink);
+      font: 14px/1.35 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    }
+    a{color:inherit}
+
+    /* subtle brutalist grain */
+    body:before{
+      content:"";
+      position:fixed; inset:0;
+      pointer-events:none;
+      background-image:
+        repeating-linear-gradient(0deg, rgba(255,255,255,.03) 0, rgba(255,255,255,.03) 1px, transparent 1px, transparent 3px),
+        repeating-linear-gradient(90deg, rgba(255,255,255,.02) 0, rgba(255,255,255,.02) 1px, transparent 1px, transparent 5px);
+      opacity:.12;
+      mix-blend-mode: overlay;
+    }
+
+    .layout{
+      display:grid;
+      grid-template-columns: 320px 1fr;
+      min-height:100vh;
+    }
+
+    /* left rail */
+    aside{
+      position:sticky; top:0;
+      height:100vh;
+      padding:18px 18px;
+      border-right:1px solid var(--hair);
+      background: rgba(10,11,16,.72);
+      backdrop-filter: blur(10px);
+    }
+
+    .brand{
+      display:flex; gap:12px; align-items:flex-start;
+      padding-bottom:14px;
+      border-bottom:1px solid var(--hair2);
+      margin-bottom:14px;
+    }
+    .mark{
+      width:28px; height:28px;
+      border:1px solid var(--hair);
+      border-radius:9px;
+      background:
+        linear-gradient(135deg, rgba(182,255,74,.18), rgba(104,214,255,.12)),
+        radial-gradient(14px 14px at 60% 35%, rgba(255,255,255,.18), transparent 60%);
+      box-shadow: var(--shadow);
+    }
+    .h1{
+      font-size:18px;
+      letter-spacing:.4px;
+      margin:0;
+      text-transform:uppercase;
+    }
+    .sub{color:var(--muted); font-size:12px; margin-top:3px}
+
+    .block{margin-top:14px}
+
+    label.small{display:block; color:var(--muted); font-size:12px; margin:0 0 6px 0}
+
+    .input{
+      width:100%;
+      padding:10px 12px;
+      border-radius: 12px;
+      background: rgba(0,0,0,.25);
+      border:1px solid var(--hair);
+      color:var(--ink);
+      outline:none;
+    }
+    .input:focus{border-color: rgba(182,255,74,.45); box-shadow: 0 0 0 4px rgba(182,255,74,.08)}
+
+    .row{display:flex; gap:10px; align-items:center; flex-wrap:wrap}
+
+    .pill{
+      display:inline-flex; align-items:center; gap:8px;
+      padding:9px 10px;
+      border-radius: 12px;
+      border:1px solid var(--hair);
+      background: rgba(0,0,0,.22);
+      color:var(--muted);
+      user-select:none;
+    }
+    select{border:0; outline:0; background:transparent; color:var(--ink)}
+
+    .tags{
+      display:flex;
+      flex-wrap:wrap;
+      gap:8px;
+      margin-top:10px;
+      max-height: 44vh;
+      overflow:auto;
+      padding-right:6px;
+    }
+    .tag{
+      cursor:pointer;
+      padding:6px 10px;
+      border-radius:999px;
+      border:1px solid var(--hair);
+      background: rgba(0,0,0,.22);
+      color:var(--muted);
+      font-size:12px;
+      transition: transform .08s ease, border-color .12s ease, color .12s ease;
+      white-space:nowrap;
+    }
+    .tag:hover{transform: translateY(-1px); border-color: rgba(104,214,255,.38); color:#d9f3ff}
+    .tag.active{border-color: rgba(182,255,74,.55); background: rgba(182,255,74,.10); color:#eaffd9}
+
+    .hint{
+      margin-top:14px;
+      padding:12px;
+      border:1px dashed rgba(255,255,255,.18);
+      border-radius: 12px;
+      color: var(--muted);
+      font-size:12px;
+    }
+    .hint b{color:var(--ink)}
+
+    /* content */
+    main{padding:18px 18px 44px 18px}
+
+    .topbar{
+      display:flex; align-items:flex-end; justify-content:space-between; gap:14px;
+      padding-bottom:14px;
+      border-bottom:1px solid var(--hair2);
+    }
+
+    .big{
+      font-size:34px;
+      line-height:1.0;
+      letter-spacing:1px;
+      text-transform:uppercase;
+      margin:0;
+    }
+    .big span{color: var(--acid)}
+
+    .stats{color:var(--muted); font-size:12px}
+
+    .grid{
+      display:grid;
+      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+      gap: 12px;
+      margin-top: 16px;
+    }
+
+    .card{
+      border:1px solid var(--hair);
+      border-radius: var(--r);
+      background: rgba(0,0,0,.22);
+      box-shadow: 0 10px 40px rgba(0,0,0,.35);
+      overflow:hidden;
+      transition: transform .12s ease, border-color .14s ease;
+      position:relative;
+      cursor:pointer;
+    }
+    .card:hover{transform: translateY(-2px); border-color: rgba(182,255,74,.30)}
+
+    .thumb{
+      height:132px;
+      border-bottom:1px solid var(--hair2);
+      background:
+        radial-gradient(650px 240px at 20% 10%, rgba(182,255,74,.14), transparent 60%),
+        radial-gradient(520px 220px at 95% 80%, rgba(104,214,255,.12), transparent 58%),
+        #0a0b12;
+      position:relative;
+      overflow:hidden;
+    }
+    .thumb img{
+      position:absolute; inset:0;
+      width:100%; height:100%;
+      object-fit: cover;
+      filter: saturate(1.05) contrast(1.05);
+      transform: scale(1.08);
+      transform-origin: 50% 50%;
+      opacity:.95;
+    }
+    .thumb::after{
+      content:"";
+      position:absolute; inset:0;
+      background: linear-gradient(180deg, rgba(0,0,0,.00), rgba(0,0,0,.22));
+      pointer-events:none;
+    }
+    .chip{
+      position:absolute; left:10px; top:10px;
+      border:1px solid var(--hair);
+      background: rgba(0,0,0,.45);
+      padding:6px 9px;
+      border-radius: 999px;
+      color: var(--muted);
+      font-size:11px;
+      z-index:2;
+    }
+    .thumb .thumbOff{
+      position:absolute; right:10px; top:10px;
+      border:1px solid var(--hair);
+      background: rgba(0,0,0,.45);
+      padding:6px 9px;
+      border-radius: 999px;
+      color: var(--muted);
+      font-size:11px;
+      z-index:2;
+    }
+    .body{padding:12px}
+    .name{font-weight:700; letter-spacing:.3px}
+    .meta{margin-top:6px; color:var(--muted); font-size:12px}
+
+    .actions{display:flex; justify-content:space-between; align-items:center; gap:10px; margin-top:10px}
+    .btn{
+      cursor:pointer;
+      padding:8px 10px;
+      border-radius: 12px;
+      border:1px solid var(--hair);
+      background: rgba(0,0,0,.28);
+      color: var(--ink);
+      font-size:12px;
+    }
+    .btn:hover{border-color: rgba(104,214,255,.38)}
+
+    .like{
+      cursor:pointer;
+      display:flex; align-items:center; gap:8px;
+      padding:8px 10px;
+      border-radius: 12px;
+      border:1px solid var(--hair);
+      background: rgba(0,0,0,.28);
+      color: var(--muted);
+      user-select:none;
+    }
+    .like[data-on="1"]{border-color: rgba(182,255,74,.55); background: rgba(182,255,74,.10); color:#eaffd9}
+
+    .empty{display:none; margin-top:16px; color:var(--muted); border:1px dashed rgba(255,255,255,.18); border-radius: 14px; padding:14px}
+
+    /* modal viewer */
+    .modal{position:fixed; inset:0; display:none; align-items:center; justify-content:center; padding:14px; background: rgba(0,0,0,.72); z-index:50}
+    .modal.open{display:flex}
+    .viewer{
+      width:min(1180px, 100%);
+      height:min(820px, 90vh);
+      border:1px solid rgba(255,255,255,.16);
+      border-radius: 16px;
+      overflow:hidden;
+      box-shadow: var(--shadow);
+      background: rgba(10,11,16,.92);
+      display:flex; flex-direction:column;
+    }
+    .viewerTop{display:flex; align-items:center; justify-content:space-between; gap:10px; padding:10px 12px; border-bottom:1px solid var(--hair2); background: rgba(0,0,0,.20)}
+    .viewerTitle{font-weight:800; letter-spacing:.4px; text-transform:uppercase}
+    .viewerMeta{color:var(--muted); font-size:12px}
+    .viewerBtns{display:flex; gap:8px; align-items:center}
+    .kbd{border:1px solid var(--hair); border-radius:10px; padding:7px 10px; color:var(--muted); font-size:12px}
+    .close{border-color: rgba(255,77,77,.35); background: rgba(255,77,77,.12)}
+    iframe{width:100%; height:100%; border:0; background:#000}
+
+    /* mobile */
+    @media (max-width: 980px){
+      .layout{grid-template-columns: 1fr}
+      aside{position:relative; height:auto; border-right:0; border-bottom:1px solid var(--hair)}
+      .tags{max-height: none}
+      .big{font-size:30px}
+    }
+  </style>
+</head>
+<body>
+  <div class="layout">
+    <aside>
+      <div class="brand">
+        <div class="mark"></div>
+        <div>
+          <div class="h1">Robby Vault</div>
+          <div class="sub">Brutalist browser for shaders & automata.</div>
+        </div>
+      </div>
+
+      <div class="block">
+        <label class="small">SEARCH</label>
+        <input id="q" class="input" placeholder="nebula / life / grid…" autocomplete="off" />
+      </div>
+
+      <div class="block row">
+        <div class="pill">
+          <span>SORT</span>
+          <select id="sort">
+            <option value="name">NAME</option>
+            <option value="liked">LIKED</option>
+            <option value="new">NEW</option>
+          </select>
+        </div>
+        <label class="pill" style="cursor:pointer">
+          <input id="onlyFav" type="checkbox" />
+          <span>FAVS</span>
+        </label>
+      </div>
+
+      <div class="block">
+        <label class="small">TAGS</label>
+        <div class="tags" id="tags"></div>
+      </div>
+
+      <div class="hint">
+        <b>Controls</b><br/>
+        Click card → preview<br/>
+        <b>Esc</b> close · <b>←/→</b> prev/next
+        <div style="margin-top:8px; opacity:.85">Likes are stored locally (per browser).</div>
+      </div>
+    </aside>
+
+    <main>
+      <div class="topbar">
+        <div>
+          <h2 class="big">VAULT / <span>EXPERIMENTS</span></h2>
+          <div class="stats" id="stats">—</div>
+        </div>
+        <div class="stats">index → <a href="index.html">/</a></div>
+      </div>
+
+      <div class="grid" id="grid"></div>
+      <div class="empty" id="empty">No matches. Clear filters.</div>
+    </main>
+  </div>
+
+  <div class="modal" id="modal" role="dialog" aria-modal="true">
+    <div class="viewer">
+      <div class="viewerTop">
+        <div>
+          <div class="viewerTitle" id="vTitle">—</div>
+          <div class="viewerMeta" id="vMeta">—</div>
+        </div>
+        <div class="viewerBtns">
+          <div class="kbd">Esc</div>
+          <button class="btn" id="vOpen">Open ↗</button>
+          <button class="btn close" id="vClose">Close</button>
+        </div>
+      </div>
+      <iframe id="frame" src="about:blank" loading="lazy"></iframe>
+    </div>
+  </div>
+
+<script>
+  // ---- Manifest (curate here) ----
+  const items = [
+    {file:'robby_bitfield.html', tags:['grid','signal','digital']},
+    {file:'robby_core.html', tags:['core','pulse']},
+    {file:'robby_core_v2.html', tags:['core','pulse']},
+    {file:'robby_engine.html', tags:['machine','flow']},
+    {file:'robby_fabric.html', tags:['fabric','weave']},
+    {file:'robby_feedback.html', tags:['feedback','loop']},
+    {file:'robby_flux.html', tags:['flow','energy']},
+    {file:'robby_freestyle.html', tags:['abstract']},
+    {file:'robby_ghost.html', tags:['ghost','echo']},
+    {file:'robby_grid.html', tags:['grid']},
+    {file:'robby_horizon.html', tags:['horizon','space']},
+    {file:'robby_horizon_v2.html', tags:['horizon','space']},
+    {file:'robby_lattice.html', tags:['lattice','structure']},
+    {file:'robby_liquid.html', tags:['liquid','flow']},
+    {file:'robby_loom.html', tags:['weave','fabric']},
+    {file:'robby_mesh.html', tags:['mesh','structure']},
+    {file:'robby_monolith.html', tags:['monolith']},
+    {file:'robby_nebula.html', tags:['space','nebula']},
+    {file:'robby_pulse.html', tags:['pulse','signal']},
+    {file:'robby_relic.html', tags:['relic']},
+    {file:'robby_remnant.html', tags:['remnant']},
+    {file:'robby_sigil.html', tags:['sigil','glyph']},
+    {file:'robby_terminal.html', tags:['terminal','digital']},
+    {file:'robby_weaver.html', tags:['weave']},
+    {file:'robby_xor.html', tags:['digital','logic']},
+    {file:'robby_ca_life.html', tags:['cellular','life','2D']},
+    {file:'robby_ca_cyclic.html', tags:['cellular','cyclic','2D']},
+    {file:'robby_ca_rule110.html', tags:['cellular','1D','rule110']},
+    {file:'robby_ca_langton.html', tags:['cellular','langton','ant']},
+    {file:'robby_ca_brians_brain.html', tags:['cellular','brians-brain','3-state']},
+    {file:'robby_ca_wireworld.html', tags:['cellular','wireworld','logic']},
+  ];
+
+  const $ = (id)=>document.getElementById(id);
+  const grid = $('grid');
+  const tagsEl = $('tags');
+  const emptyEl = $('empty');
+
+  const KEY = 'robby_vault_favs_v2';
+  const favs = new Set(JSON.parse(localStorage.getItem(KEY) || '[]'));
+
+  let activeTag = null;
+  let currentIndex = -1;
+
+  function niceName(file){
+    return file
+      .replace(/^robby_/,'')
+      .replace(/\.html$/,'')
+      .replaceAll('_',' ')
+      .replaceAll('ca ','ca: ')
+      .toUpperCase();
+  }
+
+  function saveFavs(){
+    localStorage.setItem(KEY, JSON.stringify([...favs]));
+  }
+
+  function allTags(){
+    const set = new Set();
+    items.forEach(i => (i.tags||[]).forEach(t=>set.add(t)));
+    return [...set].sort((a,b)=>a.localeCompare(b));
+  }
+
+  function renderTags(){
+    tagsEl.innerHTML='';
+    const mk = (label, value)=>{
+      const el = document.createElement('div');
+      el.className = 'tag' + ((activeTag===value)?' active':'');
+      el.textContent = label;
+      el.onclick = ()=>{ activeTag = (activeTag===value)?null:value; render(); };
+      return el;
+    };
+    tagsEl.appendChild(mk('ALL', null));
+    allTags().forEach(t=> tagsEl.appendChild(mk('#'+t.toUpperCase(), t)));
+  }
+
+  function compare(a,b,mode){
+    if(mode==='liked'){
+      const al=favs.has(a.file)?1:0, bl=favs.has(b.file)?1:0;
+      if(bl!==al) return bl-al;
+      return a.file.localeCompare(b.file);
+    }
+    if(mode==='new'){
+      const an=a.file.includes('robby_ca_')?1:0, bn=b.file.includes('robby_ca_')?1:0;
+      if(bn!==an) return bn-an;
+      return a.file.localeCompare(b.file);
+    }
+    return a.file.localeCompare(b.file);
+  }
+
+  function matches(i,q){
+    const s = (i.file+' '+niceName(i.file)+' '+(i.tags||[]).join(' ')).toLowerCase();
+    return s.includes(q);
+  }
+
+  function openViewer(item, idx){
+    currentIndex = idx;
+    $('modal').classList.add('open');
+    $('vTitle').textContent = niceName(item.file);
+    $('vMeta').textContent = item.file + '  ·  ' + (item.tags||[]).map(t=>'#'+t).join(' ');
+    $('frame').src = item.file;
+    $('vOpen').onclick = ()=> window.open(item.file,'_blank');
+  }
+
+  function closeViewer(){
+    $('modal').classList.remove('open');
+    $('frame').src = 'about:blank';
+    currentIndex = -1;
+  }
+
+  function nav(delta){
+    if(currentIndex<0) return;
+    const visible = getVisible();
+    const i = Math.max(0, Math.min(visible.length-1, currentIndex + delta));
+    const item = visible[i];
+    openViewer(item, i);
+  }
+
+  // Static thumbnails live in /thumbs/*.jpg (generated via Playwright).
+  // No WebGL contexts needed in the grid.
+
+  function card(item, idx){
+    const el = document.createElement('div');
+    el.className='card';
+    const chip = item.file.includes('robby_ca_') ? 'CELLULAR' : 'SHADER';
+
+    el.innerHTML = `
+      <div class="thumb">
+        <div class="chip">${chip}</div>
+        <img loading="lazy" src="thumbs/${item.file.replace(/\.html$/,'')}.jpg" alt="${item.file}" onerror="this.style.display='none'" />
+      </div>
+      <div class="body">
+        <div class="name">${niceName(item.file)}</div>
+        <div class="meta">${(item.tags||[]).slice(0,4).map(t=>'#'+t).join(' ')}</div>
+        <div class="actions">
+          <button class="btn" data-open>PREVIEW</button>
+          <div class="like" data-like data-on="${favs.has(item.file)?1:0}">
+            <span>${favs.has(item.file)?'★':'☆'}</span><span>LIKE</span>
+          </div>
+        </div>
+      </div>
+    `;
+
+    el.querySelector('[data-open]').onclick = (e)=>{ e.stopPropagation(); openViewer(item, idx); };
+    el.querySelector('[data-like]').onclick = (e)=>{
+      e.stopPropagation();
+      if(favs.has(item.file)) favs.delete(item.file); else favs.add(item.file);
+      saveFavs();
+      render();
+    };
+
+    el.onclick = ()=> openViewer(item, idx);
+
+    return el;
+  }
+
+  function getVisible(){
+    const q = $('q').value.trim().toLowerCase();
+    const onlyFav = $('onlyFav').checked;
+    const sort = $('sort').value;
+
+    return items
+      .filter(i => !activeTag || (i.tags||[]).includes(activeTag))
+      .filter(i => !q || matches(i,q))
+      .filter(i => !onlyFav || favs.has(i.file))
+      .sort((a,b)=>compare(a,b,sort));
+  }
+
+  function render(){
+    renderTags();
+    const visible = getVisible();
+
+    $('stats').textContent = `${visible.length}/${items.length} shown` + (activeTag?` · tag=${activeTag}`:'');
+
+    grid.innerHTML='';
+    visible.forEach((i,idx)=> grid.appendChild(card(i, idx)));
+
+    emptyEl.style.display = visible.length ? 'none' : 'block';
+  }
+
+  $('q').addEventListener('input', render);
+  $('sort').addEventListener('change', render);
+  $('onlyFav').addEventListener('change', render);
+  $('vClose').addEventListener('click', closeViewer);
+  $('modal').addEventListener('click', (e)=>{ if(e.target.id==='modal') closeViewer(); });
+  window.addEventListener('keydown', (e)=>{
+    if(!$('modal').classList.contains('open')) return;
+    if(e.key==='Escape') closeViewer();
+    if(e.key==='ArrowLeft') nav(-1);
+    if(e.key==='ArrowRight') nav(1);
+  });
+
+  render();
+</script>
+</body>
+</html>

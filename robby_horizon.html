@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>The Event Horizon - Robby Freestyle</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300&display=swap');
+        body { margin: 0; overflow: hidden; background: #000; font-family: 'Space Grotesk', sans-serif; }
+        canvas { display: block; width: 100vw; height: 100vh; }
+        #hud {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            color: rgba(255, 255, 255, 0.4);
+            letter-spacing: 0.6em;
+            text-transform: uppercase;
+            font-size: 8px;
+            pointer-events: none;
+            text-align: right;
+            line-height: 1.8;
+            border-right: 1px solid rgba(255, 255, 255, 0.2);
+            padding-right: 15px;
+        }
+    </style>
+</head>
+<body>
+    <div id="hud">
+        Experiment 09 // The Event Horizon<br>
+        Gravitational Lensing: ENABLED<br>
+        Singularity: STABLE
+    </div>
+    <canvas id="glCanvas"></canvas>
+    <script>
+        const canvas = document.getElementById('glCanvas');
+        const gl = canvas.getContext('webgl2');
+
+        const vs = `#version 300 es
+            void main() {
+                gl_Position = vec4(vec2((gl_VertexID << 1) & 2, gl_VertexID & 2) * 2.0 - 1.0, 0.0, 1.0);
+            }
+        `;
+
+        const fs = `#version 300 es
+        precision highp float;
+        out vec4 fragColor;
+        uniform vec2 u_res;
+        uniform float u_time;
+        uniform vec2 u_mouse;
+
+        mat2 rot(float a) {
+            float s = sin(a), c = cos(a);
+            return mat2(c, -s, s, c);
+        }
+
+        float hash(vec2 p) {
+            return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453);
+        }
+
+        void main() {
+            vec2 uv = (gl_FragCoord.xy * 2.0 - u_res) / min(u_res.x, u_res.y);
+            vec2 m = (u_mouse / u_res) * 2.0 - 1.0;
+            
+            // Gravitational Lensing effect (Distance distortion)
+            float d = length(uv);
+            float dist = d;
+            
+            // The Singularity (Shadow)
+            float shadow = smoothstep(0.35, 0.36, d);
+            
+            // Accretion Disk Physics
+            // We distort the UVs based on proximity to the mass
+            float warp = 0.5 / d;
+            vec2 warpedUV = uv * (1.0 + warp * 0.2);
+            float angle = atan(warpedUV.y, warpedUV.x);
+            
+            // Spiral Pattern
+            float spiral = angle * 2.0 + u_time * 1.5 + 2.0/d;
+            float pattern = sin(spiral * 8.0) * 0.5 + 0.5;
+            pattern *= smoothstep(0.8, 0.4, d) * smoothstep(0.3, 0.4, d);
+            
+            // Photon Ring
+            float ring = smoothstep(0.38, 0.37, d) * smoothstep(0.34, 0.35, d);
+            
+            vec3 color = vec3(0.0);
+            
+            // Disk Color (Fire/Plasma)
+            vec3 diskCol = mix(vec3(1.0, 0.4, 0.1), vec3(0.1, 0.5, 1.0), sin(d * 5.0 - u_time) * 0.5 + 0.5);
+            color += diskCol * pattern * (1.5/d) * 0.1 * shadow;
+            
+            // Ring Color (High Energy)
+            color += vec3(1.0, 0.95, 0.8) * ring * 2.0;
+            
+            // Nebula background
+            float bgNoise = hash(uv * 0.1 + u_time * 0.01);
+            color += vec3(0.02, 0.04, 0.08) * bgNoise;
+            
+            // Interaction: Lens Flare
+            float flare = 0.001 / length(uv - m * 0.3);
+            color += vec3(0.4, 0.7, 1.0) * flare;
+            
+            // Vignette & Post-process
+            color *= smoothstep(2.0, 0.5, d);
+            color = pow(color, vec3(0.95)); // Gamma
+            
+            fragColor = vec4(color, 1.0);
+        }
+        `;
+
+        function createShader(gl, type, source) {
+            const s = gl.createShader(type);
+            gl.shaderSource(s, source);
+            gl.compileShader(s);
+            if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) {
+                console.error(gl.getShaderInfoLog(s));
+            }
+            return s;
+        }
+
+        const program = gl.createProgram();
+        gl.attachShader(program, createShader(gl, gl.VERTEX_SHADER, vs));
+        gl.attachShader(program, createShader(gl, gl.FRAGMENT_SHADER, fs));
+        gl.linkProgram(program);
+        gl.useProgram(program);
+
+        const uRes = gl.getUniformLocation(program, 'u_res');
+        const uTime = gl.getUniformLocation(program, 'u_time');
+        const uMouse = gl.getUniformLocation(program, 'u_mouse');
+
+        let mx = 0, my = 0;
+        window.addEventListener('mousemove', e => {
+            mx = e.clientX;
+            my = window.innerHeight - e.clientY;
+        });
+
+        function render(t) {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            gl.viewport(0, 0, canvas.width, canvas.height);
+            gl.uniform2f(uRes, canvas.width, canvas.height);
+            gl.uniform1f(uTime, t * 0.001);
+            gl.uniform2f(uMouse, mx, my);
+            gl.drawArrays(gl.TRIANGLES, 0, 3);
+            requestAnimationFrame(render);
+        }
+        requestAnimationFrame(render);
+    </script>
+</body>
+</html>

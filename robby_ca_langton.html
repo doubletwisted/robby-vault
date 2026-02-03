@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Robby — CA: Langton's Ant</title>
+  <style>
+    html,body{height:100%;margin:0;background:#05060a;overflow:hidden}
+    canvas{width:100%;height:100%;display:block;image-rendering:pixelated}
+    .hud{position:fixed;left:14px;top:14px;color:#e6e6e6;font:12px/1.3 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      background:rgba(0,0,0,.35);border:1px solid rgba(255,255,255,.12);padding:10px 12px;border-radius:12px;backdrop-filter: blur(6px);
+    }
+    .hud b{color:#b6ff4a}
+  </style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div class="hud">
+  <div><b>CA: LANGTON'S ANT</b> — chaos → highway</div>
+  <div>Keys: <b>R</b> reset · <b>Space</b> pause · <b>+</b>/<b>-</b> speed · click = new ant</div>
+</div>
+<script>
+  const c = document.getElementById('c');
+  const ctx = c.getContext('2d', {alpha:false});
+
+  let W=0,H=0,dpr=1;
+  let scale=2, gw=0, gh=0;
+  let grid; // 0/1
+  let paused=false;
+  let speed=400; // steps per frame
+
+  let ax=0, ay=0, dir=0; // 0 up,1 right,2 down,3 left
+
+  function resize(){
+    dpr = Math.min(2, window.devicePixelRatio||1);
+    W = Math.floor(innerWidth*dpr);
+    H = Math.floor(innerHeight*dpr);
+    c.width=W; c.height=H;
+    const targetCells = 420;
+    scale = Math.max(2, Math.floor(Math.min(W,H)/targetCells));
+    gw = Math.floor(W/scale);
+    gh = Math.floor(H/scale);
+    grid = new Uint8Array(gw*gh);
+    reset();
+  }
+
+  function idx(x,y){
+    x = (x+gw)%gw;
+    y = (y+gh)%gh;
+    return x+y*gw;
+  }
+
+  function reset(){
+    grid.fill(0);
+    ax = (gw/2)|0;
+    ay = (gh/2)|0;
+    dir = (Math.random()*4)|0;
+    ctx.fillStyle = '#05060a';
+    ctx.fillRect(0,0,W,H);
+  }
+
+  function step(){
+    const i = idx(ax,ay);
+    const v = grid[i];
+
+    // turn right on white(0), left on black(1)
+    dir = (dir + (v?3:1)) & 3;
+    grid[i] = v^1;
+
+    // move forward
+    if(dir===0) ay--; else if(dir===1) ax++; else if(dir===2) ay++; else ax--;
+    ax = (ax+gw)%gw;
+    ay = (ay+gh)%gh;
+  }
+
+  function drawCell(x,y,v){
+    ctx.fillStyle = v ? 'rgba(182,255,74,0.95)' : 'rgba(5,6,10,1)';
+    ctx.fillRect(x*scale,y*scale,scale,scale);
+  }
+
+  function frame(){
+    requestAnimationFrame(frame);
+    if(paused) return;
+
+    // do many steps, draw only changed cell for speed
+    for(let s=0;s<speed;s++){
+      const i = idx(ax,ay);
+      const before = grid[i];
+      step();
+      drawCell((i%gw), (i/gw)|0, before^1);
+    }
+
+    // draw ant as cyan pixel
+    ctx.fillStyle = 'rgba(104,214,255,0.9)';
+    ctx.fillRect(ax*scale, ay*scale, scale, scale);
+
+    // subtle dark fade for trails
+    ctx.fillStyle = 'rgba(0,0,0,0.02)';
+    ctx.fillRect(0,0,W,H);
+  }
+
+  addEventListener('keydown', (e)=>{
+    if(e.key===' ') paused=!paused;
+    if(e.key==='r'||e.key==='R') reset();
+    if(e.key==='+'||e.key==='=') speed = Math.min(3000, Math.floor(speed*1.25));
+    if(e.key==='-'||e.key==='_') speed = Math.max(40, Math.floor(speed/1.25));
+  });
+
+  addEventListener('pointerdown', (e)=>{
+    const rect = c.getBoundingClientRect();
+    const px = (e.clientX-rect.left) / rect.width;
+    const py = (e.clientY-rect.top) / rect.height;
+    ax = Math.floor(px*gw);
+    ay = Math.floor(py*gh);
+    dir = (Math.random()*4)|0;
+  });
+
+  addEventListener('resize', resize);
+  resize();
+  frame();
+</script>
+</body>
+</html>
