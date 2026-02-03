@@ -30,7 +30,8 @@ export async function onRequestPost({ request, env }) {
   if (!id) return bad('missing id');
 
   // allowlist to prevent arbitrary key spam
-  if (!/^robby_[a-z0-9_\-]+$/.test(id)) return bad('invalid id');
+  // we accept ids like: robby_flux.html / robby_ca_rule110.html
+  if (!/^robby_[a-z0-9_\-]+\.html$/.test(id)) return bad('invalid id');
 
   const userKey = `u:${client}:${id}`;
   const countKey = `like:${id}`;
