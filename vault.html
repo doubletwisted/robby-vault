@@ -112,6 +112,27 @@
     }
     select{border:0; outline:0; background:transparent; color:var(--ink)}
 
+    .topLiked{
+      display:flex;
+      flex-direction:column;
+      gap:8px;
+      margin-top:10px;
+      max-height: 22vh;
+      overflow:auto;
+      padding-right:6px;
+    }
+    .topItem{
+      display:flex; align-items:center; justify-content:space-between; gap:10px;
+      padding:8px 10px;
+      border:1px solid var(--hair);
+      border-radius: 12px;
+      background: rgba(0,0,0,.22);
+      cursor:pointer;
+    }
+    .topItem:hover{border-color: rgba(104,214,255,.38)}
+    .topItem .t{color:var(--ink); font-size:12px; letter-spacing:.1em; text-transform:uppercase; opacity:.9}
+    .topItem .c{color:var(--acid); font-size:12px}
+
     .tags{
       display:flex;
       flex-wrap:wrap;
@@ -261,7 +282,8 @@
     .empty{display:none; margin-top:16px; color:var(--muted); border:1px dashed rgba(255,255,255,.18); border-radius: 14px; padding:14px}
 
     /* modal viewer */
-    .modal{position:fixed; inset:0; display:none; align-items:center; justify-content:center; padding:14px; background: rgba(0,0,0,.72); z-index:50}
+    body.modalOpen{overflow:hidden}
+    .modal{position:fixed; inset:0; display:none; align-items:center; justify-content:center; padding:14px; background: rgba(0,0,0,.72); z-index:50; overscroll-behavior: contain; touch-action: none;}
     .modal.open{display:flex}
     .viewer{
       width:min(1180px, 100%);
@@ -322,6 +344,11 @@
       </div>
 
       <div class="block">
+        <label class="small">TOP LIKED</label>
+        <div class="topLiked" id="topLiked"></div>
+      </div>
+
+      <div class="block">
         <label class="small">TAGS</label>
         <div class="tags" id="tags"></div>
       </div>
@@ -340,7 +367,7 @@
           <h2 class="big">VAULT / <span>EXPERIMENTS</span></h2>
           <div class="stats" id="stats">—</div>
         </div>
-        <div class="stats">index → <a href="index.html">/</a></div>
+        <div class="stats">showcase → <a href="showcase">/showcase</a> · index → <a href="index.html">/</a></div>
       </div>
 
       <div class="grid" id="grid"></div>
@@ -483,6 +510,41 @@
     }
   }
 
+  function renderTopLiked(){
+    const el = $('topLiked');
+    if(!el) return;
+
+    const ranked = items
+      .map(it => ({ it, c: Number(likeCounts[it.file] || 0) }))
+      .sort((a,b)=> (b.c - a.c) || a.it.file.localeCompare(b.it.file))
+      .slice(0, 6);
+
+    el.innerHTML = '';
+
+    // if nobody liked anything yet, show a quiet placeholder
+    if(!ranked.length || ranked[0].c === 0){
+      const d = document.createElement('div');
+      d.className = 'topItem';
+      d.style.opacity = '0.65';
+      d.innerHTML = `<div class="t">(no votes yet)</div><div class="c">0</div>`;
+      el.appendChild(d);
+      return;
+    }
+
+    ranked.forEach(({it, c})=>{
+      const row = document.createElement('div');
+      row.className = 'topItem';
+      row.innerHTML = `<div class="t">${niceName(it.file)}</div><div class="c">${c}</div>`;
+      row.onclick = ()=>{
+        // open viewer at the corresponding index in the current filtered/sorted list
+        const visible = getVisible();
+        const idx = visible.findIndex(v => v.file === it.file);
+        openViewer(it, Math.max(0, idx));
+      };
+      el.appendChild(row);
+    });
+  }
+
   function allTags(){
     const set = new Set();
     items.forEach(i => (i.tags||[]).forEach(t=>set.add(t)));
@@ -524,6 +586,11 @@
 
   function openViewer(item, idx){
     currentIndex = idx;
+    document.body.classList.add('modalOpen');
+    // prevent scroll chaining on mobile
+    document.documentElement.style.overflow = 'hidden';
+    document.body.style.overflow = 'hidden';
+
     $('modal').classList.add('open');
     $('vTitle').textContent = niceName(item.file);
     $('vMeta').textContent = item.file + '  ·  ' + (item.tags||[]).map(t=>'#'+t).join(' ');
@@ -535,6 +602,10 @@
     $('modal').classList.remove('open');
     $('frame').src = 'about:blank';
     currentIndex = -1;
+
+    document.body.classList.remove('modalOpen');
+    document.documentElement.style.overflow = '';
+    document.body.style.overflow = '';
   }
 
   function nav(delta){
@@ -597,6 +668,7 @@
 
   function render(){
     renderTags();
+    renderTopLiked();
     const visible = getVisible();
 
     $('stats').textContent = `${visible.length}/${items.length} shown` + (activeTag?` · tag=${activeTag}`:'');
