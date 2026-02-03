@@ -255,6 +255,7 @@
       color: var(--muted);
       user-select:none;
     }
+    .like .cnt{margin-left:auto; color:var(--ink); opacity:.85; font-size:12px}
     .like[data-on="1"]{border-color: rgba(182,255,74,.55); background: rgba(182,255,74,.10); color:#eaffd9}
 
     .empty{display:none; margin-top:16px; color:var(--muted); border:1px dashed rgba(255,255,255,.18); border-radius: 14px; padding:14px}
@@ -309,8 +310,8 @@
         <div class="pill">
           <span>SORT</span>
           <select id="sort">
-            <option value="name">NAME</option>
             <option value="liked">LIKED</option>
+            <option value="name">NAME</option>
             <option value="new">NEW</option>
           </select>
         </div>
@@ -329,7 +330,7 @@
         <b>Controls</b><br/>
         Click card → preview<br/>
         <b>Esc</b> close · <b>←/→</b> prev/next
-        <div style="margin-top:8px; opacity:.85">Likes are stored locally (per browser).</div>
+        <div style="margin-top:8px; opacity:.85">Likes are global (anonymous). Sorted by likes by default.</div>
       </div>
     </aside>
 
@@ -405,8 +406,23 @@
   const tagsEl = $('tags');
   const emptyEl = $('empty');
 
-  const KEY = 'robby_vault_favs_v2';
-  const favs = new Set(JSON.parse(localStorage.getItem(KEY) || '[]'));
+  // Favorites (local)
+  const KEY_FAVS = 'robby_vault_favs_v3';
+  const favs = new Set(JSON.parse(localStorage.getItem(KEY_FAVS) || '[]'));
+
+  // Global likes (anonymous, per-browser identity)
+  const KEY_CLIENT = 'robby_vault_client_id_v1';
+  const KEY_LIKED = 'robby_vault_liked_v1';
+  const clientId = (function(){
+    let v = localStorage.getItem(KEY_CLIENT);
+    if(!v){
+      v = (crypto?.randomUUID?.() || ('c_'+Math.random().toString(16).slice(2)+Date.now().toString(16)));
+      localStorage.setItem(KEY_CLIENT, v);
+    }
+    return v;
+  })();
+  const likedLocal = new Set(JSON.parse(localStorage.getItem(KEY_LIKED) || '[]'));
+  let likeCounts = {}; // id -> count
 
   let activeTag = null;
   let currentIndex = -1;
@@ -421,7 +437,50 @@
   }
 
   function saveFavs(){
-    localStorage.setItem(KEY, JSON.stringify([...favs]));
+    localStorage.setItem(KEY_FAVS, JSON.stringify([...favs]));
+  }
+  function saveLikedLocal(){
+    localStorage.setItem(KEY_LIKED, JSON.stringify([...likedLocal]));
+  }
+
+  async function fetchLikes(){
+    try{
+      const res = await fetch('/api/likes', { cache: 'no-store' });
+      if(!res.ok) throw new Error('likes fetch failed');
+      likeCounts = await res.json();
+    } catch(e){
+      // keep zeros
+      likeCounts = likeCounts || {};
+    }
+  }
+
+  async function toggleLike(id){
+    // optimistic local flip
+    const was = likedLocal.has(id);
+    if(was) likedLocal.delete(id); else likedLocal.add(id);
+    saveLikedLocal();
+
+    try{
+      const res = await fetch('/api/like', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-client-id': clientId,
+        },
+        body: JSON.stringify({ id }),
+      });
+      const data = await res.json();
+      if(!data?.ok) throw new Error(data?.error || 'like failed');
+      likeCounts[id] = Number(data.count || 0);
+
+      // reconcile local state with server response
+      if(data.liked) likedLocal.add(id); else likedLocal.delete(id);
+      saveLikedLocal();
+    } catch(e){
+      // rollback
+      if(was) likedLocal.add(id); else likedLocal.delete(id);
+      saveLikedLocal();
+    }
   }
 
   function allTags(){
@@ -445,8 +504,9 @@
 
   function compare(a,b,mode){
     if(mode==='liked'){
-      const al=favs.has(a.file)?1:0, bl=favs.has(b.file)?1:0;
-      if(bl!==al) return bl-al;
+      const ac = Number(likeCounts[a.file] || 0);
+      const bc = Number(likeCounts[b.file] || 0);
+      if(bc!==ac) return bc-ac;
       return a.file.localeCompare(b.file);
     }
     if(mode==='new'){
@@ -503,18 +563,18 @@
         <div class="meta">${(item.tags||[]).slice(0,4).map(t=>'#'+t).join(' ')}</div>
         <div class="actions">
           <button class="btn" data-open>PREVIEW</button>
-          <div class="like" data-like data-on="${favs.has(item.file)?1:0}">
-            <span>${favs.has(item.file)?'★':'☆'}</span><span>LIKE</span>
+          <div class="like" data-like data-on="${likedLocal.has(item.file)?1:0}">
+            <span>${likedLocal.has(item.file)?'★':'☆'}</span><span>LIKE</span>
+            <span class="cnt">${Number(likeCounts[item.file]||0)}</span>
           </div>
         </div>
       </div>
     `;
 
     el.querySelector('[data-open]').onclick = (e)=>{ e.stopPropagation(); openViewer(item, idx); };
-    el.querySelector('[data-like]').onclick = (e)=>{
+    el.querySelector('[data-like]').onclick = async (e)=>{
       e.stopPropagation();
-      if(favs.has(item.file)) favs.delete(item.file); else favs.add(item.file);
-      saveFavs();
+      await toggleLike(item.file);
       render();
     };
 
@@ -550,6 +610,10 @@
   $('q').addEventListener('input', render);
   $('sort').addEventListener('change', render);
   $('onlyFav').addEventListener('change', render);
+
+  // default sort: most liked
+  $('sort').value = 'liked';
+
   $('vClose').addEventListener('click', closeViewer);
   $('modal').addEventListener('click', (e)=>{ if(e.target.id==='modal') closeViewer(); });
   window.addEventListener('keydown', (e)=>{
@@ -559,7 +623,10 @@
     if(e.key==='ArrowRight') nav(1);
   });
 
-  render();
+  (async()=>{
+    await fetchLikes();
+    render();
+  })();
 </script>
 </body>
 </html>
