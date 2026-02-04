@@ -282,7 +282,7 @@
     .empty{display:none; margin-top:16px; color:var(--muted); border:1px dashed rgba(255,255,255,.18); border-radius: 14px; padding:14px}
 
     /* modal viewer */
-    body.modalOpen{overflow:hidden}
+    body.modalOpen{overflow:hidden; position: fixed; width: 100%; height: 100%;}
     .modal{position:fixed; inset:0; display:none; align-items:center; justify-content:center; padding:14px; background: rgba(0,0,0,.72); z-index:50; overscroll-behavior: contain; touch-action: none;}
     .modal.open{display:flex}
     .viewer{
@@ -333,6 +333,7 @@
           <span>SORT</span>
           <select id="sort">
             <option value="liked">LIKED</option>
+            <option value="trending">TRENDING</option>
             <option value="name">NAME</option>
             <option value="new">NEW</option>
           </select>
@@ -341,6 +342,11 @@
           <input id="onlyFav" type="checkbox" />
           <span>FAVS</span>
         </label>
+      </div>
+
+      <div class="block">
+        <label class="small">TRENDING</label>
+        <div class="topLiked" id="trending"></div>
       </div>
 
       <div class="block">
@@ -395,6 +401,26 @@
 <script>
   // ---- Manifest (curate here) ----
   const items = [
+    {file:'robby_xor_flux.html', tags:['xor','fluid','horoptr','warm']},
+    {file:'robby_xor_weave.html', tags:['xor','weave','lattice','horoptr']},
+    {file:'robby_xor_star.html', tags:['xor','radial','star','horoptr']},
+    {file:'robby_xor_glitch.html', tags:['xor','glitch','temporal','horoptr']},
+    {file:'robby_xor_pulse.html', tags:['xor','pulse','rhythm','horoptr']},
+    {file:'robby_xor_void.html', tags:['xor','void','dark','horoptr']},
+    {file:'robby_xor_spark.html', tags:['xor','sparks','particles','horoptr']},
+    {file:'robby_xor_circuit.html', tags:['xor','circuit','traces','horoptr']},
+    {file:'robby_xor_cloud.html', tags:['xor','cloud','nebula','horoptr']},
+    {file:'robby_xor_crystal.html', tags:['xor','crystal','growth','horoptr']},
+    {file:'robby_xor_wave.html', tags:['xor','wave','interference','horoptr']},
+    {file:'robby_xor_echo.html', tags:['xor','echo','feedback','horoptr']},
+    {file:'robby_xor_prism.html', tags:['xor','prism','chromatic','horoptr']},
+    {file:'robby_xor_shimmer.html', tags:['xor','shimmer','jitter','horoptr']},
+    {file:'robby_xor_storm.html', tags:['xor','storm','turbulence','horoptr']},
+    {file:'robby_xor_plasma.html', tags:['xor','plasma','liquid','horoptr']},
+    {file:'robby_xor_grid.html', tags:['xor','grid','scale','horoptr']},
+    {file:'robby_xor_dust.html', tags:['xor','dust','noise','horoptr']},
+    {file:'robby_xor_relic.html', tags:['xor','relic','ancient','horoptr']},
+    {file:'robby_xor_core.html', tags:['xor','core','rings','horoptr']},
     {file:'robby_bitfield.html', tags:['grid','signal','digital']},
     {file:'robby_core.html', tags:['core','pulse']},
     {file:'robby_core_v2.html', tags:['core','pulse']},
@@ -531,21 +557,43 @@
       d.style.opacity = '0.65';
       d.innerHTML = `<div class="t">(no votes yet)</div><div class="c">0</div>`;
       el.appendChild(d);
-      return;
+    } else {
+      ranked.forEach(({it, c})=>{
+        const row = document.createElement('div');
+        row.className = 'topItem';
+        row.innerHTML = `<div class="t">${niceName(it.file)}</div><div class="c">${c}</div>`;
+        row.onclick = ()=>{
+          const visible = getVisible();
+          const idx = visible.findIndex(v => v.file === it.file);
+          openViewer(it, Math.max(0, idx));
+        };
+        el.appendChild(row);
+      });
     }
 
-    ranked.forEach(({it, c})=>{
-      const row = document.createElement('div');
-      row.className = 'topItem';
-      row.innerHTML = `<div class="t">${niceName(it.file)}</div><div class="c">${c}</div>`;
-      row.onclick = ()=>{
-        // open viewer at the corresponding index in the current filtered/sorted list
-        const visible = getVisible();
-        const idx = visible.findIndex(v => v.file === it.file);
-        openViewer(it, Math.max(0, idx));
-      };
-      el.appendChild(row);
-    });
+    // Render Trending
+    const tel = $('trending');
+    if(tel){
+      const trending = items
+        .filter(it => it.file.includes('xor'))
+        .map(it => ({ it, c: Number(likeCounts[it.file] || 0) }))
+        .sort((a,b)=> (b.c - a.c) || a.it.file.localeCompare(b.it.file))
+        .slice(0, 4);
+
+      tel.innerHTML = '';
+      trending.forEach(({it, c})=>{
+        const row = document.createElement('div');
+        row.className = 'topItem';
+        row.style.borderColor = 'rgba(182,255,74,0.15)';
+        row.innerHTML = `<div class="t">${niceName(it.file)}</div><div class="c">NEW</div>`;
+        row.onclick = ()=>{
+          const visible = getVisible();
+          const idx = visible.findIndex(v => v.file === it.file);
+          openViewer(it, Math.max(0, idx));
+        };
+        tel.appendChild(row);
+      });
+    }
   }
 
   function allTags(){
@@ -571,6 +619,14 @@
     if(mode==='liked'){
       const ac = Number(likeCounts[a.file] || 0);
       const bc = Number(likeCounts[b.file] || 0);
+      if(bc!==ac) return bc-ac;
+      return a.file.localeCompare(b.file);
+    }
+    if(mode==='trending'){
+      // simple trending: most liked among newer items (or just shuffle for now)
+      const isNew = a.file.includes('xor') ? 1 : 0;
+      const ac = Number(likeCounts[a.file] || 0) * (isNew ? 1.5 : 1);
+      const bc = Number(likeCounts[b.file] || 0) * (b.file.includes('xor') ? 1.5 : 1);
       if(bc!==ac) return bc-ac;
       return a.file.localeCompare(b.file);
     }
@@ -609,6 +665,9 @@
     document.body.classList.remove('modalOpen');
     document.documentElement.style.overflow = '';
     document.body.style.overflow = '';
+    document.body.style.position = '';
+    document.body.style.width = '';
+    document.body.style.height = '';
   }
 
   function nav(delta){
@@ -625,7 +684,7 @@
   function card(item, idx){
     const el = document.createElement('div');
     el.className='card';
-    const chip = item.file.includes('robby_ca_') ? 'CELLULAR' : 'SHADER';
+    const chip = item.file.includes('robby_ca_') ? 'CELLULAR' : (item.file.includes('xor_') ? 'NEW:XOR' : 'SHADER');
 
     el.innerHTML = `
       <div class="thumb">
