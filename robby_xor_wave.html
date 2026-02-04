@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Robby — XOR_WAVE</title>
+  <style>
+    body{margin:0;overflow:hidden;background:#000;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace}
+    canvas{width:100vw;height:100vh;display:block}
+    #hud{position:fixed;left:22px;top:22px;color:rgba(255,255,255,.35);letter-spacing:.35em;text-transform:uppercase;font-size:10px;pointer-events:none;border-left:1px solid rgba(255,255,255,.18);padding-left:14px}
+  </style>
+</head>
+<body>
+  <div id="gl2warn" style="display:none;position:fixed;inset:0;background:#000;color:#e6e6e6;z-index:9999;padding:20px;font:14px/1.4 ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,'Liberation Mono','Courier New',monospace;">
+    <div style="max-width:820px">
+      <div style="color:#ff4d4d;letter-spacing:.2em;text-transform:uppercase;font-size:12px">WebGL2 required</div>
+      <h1 style="margin:10px 0 8px 0;font-size:18px">XOR_WAVE needs WebGL2.</h1>
+      <div style="opacity:.8">Try Chrome/Edge on desktop, or update iOS.</div>
+    </div>
+  </div>
+
+  <div id="hud">XOR_WAVE // interference ripples<br/>scroll = morph · tap = pulse</div>
+  <canvas id="c"></canvas>
+
+  <script>
+    const canvas = document.getElementById('c');
+    const gl = canvas.getContext('webgl2', { antialias: true });
+    if(!gl){ document.getElementById('gl2warn').style.display='block'; throw new Error('WebGL2 missing'); }
+
+    const vs = `#version 300 es
+    void main(){
+      gl_Position = vec4(vec2((gl_VertexID<<1)&2, gl_VertexID&2)*2.0-1.0, 0, 1);
+    }`;
+
+    const fs = `#version 300 es
+    precision highp float;
+    out vec4 fragColor;
+    uniform vec2 u_res;
+    uniform float u_time;
+    uniform vec2 u_mouse;
+    uniform float u_morph;
+    uniform float u_pulse;
+
+    
+
+    // xor-ish palette (amber/teal)
+    vec3 pal(float t){
+      vec3 a=vec3(0.10,0.08,0.07);
+      vec3 b=vec3(0.55,0.45,0.35);
+      vec3 c=vec3(1.0,1.0,1.0);
+      vec3 d=vec3(0.00,0.18,0.33);
+      return a + b*cos(6.28318*(c*t + d));
+    }
+
+    void main(){
+      vec2 uv = (gl_FragCoord.xy*2.0 - u_res) / min(u_res.x,u_res.y);
+      float t = u_time;
+      float morph = u_morph;
+      float pulse = u_pulse;
+
+      
+      float d = length(uv);
+      float ripple = sin(d * 20.0 - t * 5.0);
+      int x = int(uv.x * 10.0 + ripple);
+      int y = int(uv.y * 10.0);
+      float v = float(x ^ y) / 16.0;
+      float final_intensity = v * exp(-d);
+        
+
+      // Horoptr grading
+      vec3 warm = vec3(1.2, 0.62, 0.20);
+      vec3 teal = vec3(0.10, 0.75, 0.85);
+      vec3 col = mix(teal, warm, smoothstep(-0.5, 0.5, sin(t*0.2 + length(uv)))) * final_intensity;
+      
+      col += 0.3 * teal * ripple;
+
+      col = col/(col+vec3(1.0));
+      col = pow(col, vec3(0.92));
+      fragColor = vec4(col,1.0);
+    }`;
+
+    function sh(type, src){
+      const s = gl.createShader(type);
+      gl.shaderSource(s, src);
+      gl.compileShader(s);
+      if(!gl.getShaderParameter(s, gl.COMPILE_STATUS)){
+        const err = gl.getShaderInfoLog(s) || 'compile error';
+        console.error(err);
+        alert(err);
+        throw new Error(err);
+      }
+      return s;
+    }
+
+    const prog = gl.createProgram();
+    gl.attachShader(prog, sh(gl.VERTEX_SHADER, vs));
+    gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, fs));
+    gl.linkProgram(prog);
+    if(!gl.getProgramParameter(prog, gl.LINK_STATUS)){
+      const err = gl.getProgramInfoLog(prog) || 'link error';
+      console.error(err);
+      alert(err);
+      throw new Error(err);
+    }
+
+    const uRes = gl.getUniformLocation(prog, 'u_res');
+    const uTime = gl.getUniformLocation(prog, 'u_time');
+    const uMouse = gl.getUniformLocation(prog, 'u_mouse');
+    const uMorph = gl.getUniformLocation(prog, 'u_morph');
+    const uPulse = gl.getUniformLocation(prog, 'u_pulse');
+
+    let mx=0,my=0;
+    let morph=0.0;
+    let pulse=0.0;
+
+    function setMouse(e){
+      const x = e.clientX;
+      const y = e.clientY;
+      mx = x;
+      my = window.innerHeight - y;
+    }
+    addEventListener('mousemove', setMouse);
+    addEventListener('touchmove', (e)=>{ if(e.touches && e.touches[0]) setMouse(e.touches[0]); }, {passive:true});
+    addEventListener('wheel', (e)=>{ morph = Math.min(1, Math.max(0, morph + e.deltaY * -0.0006)); }, {passive:true});
+    addEventListener('pointerdown', ()=>{ pulse = 1.0; });
+
+    function resize(){
+      const dpr = Math.min(2, devicePixelRatio||1);
+      canvas.width = Math.floor(innerWidth*dpr);
+      canvas.height = Math.floor(innerHeight*dpr);
+      gl.viewport(0,0,canvas.width,canvas.height);
+    }
+    addEventListener('resize', resize);
+    resize();
+
+    function tick(t){
+      t *= 0.001;
+      gl.useProgram(prog);
+      gl.uniform2f(uRes, canvas.width, canvas.height);
+      gl.uniform1f(uTime, t);
+      gl.uniform2f(uMouse, mx, my);
+      gl.uniform1f(uMorph, morph);
+      gl.uniform1f(uPulse, pulse);
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+      pulse *= 0.96;
+      if(pulse < 0.001) pulse = 0.0;
+      requestAnimationFrame(tick);
+    }
+    requestAnimationFrame(tick);
+  </script>
+</body>
+</html>
