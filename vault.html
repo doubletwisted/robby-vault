@@ -615,6 +615,9 @@
     allTags().forEach(t=> tagsEl.appendChild(mk('#'+t.toUpperCase(), t)));
   }
 
+  // capture manifest order so "NEW" sort is deterministic (latest additions first)
+  const orderIndex = new Map(items.map((it, i)=>[it.file, i]));
+
   function compare(a,b,mode){
     if(mode==='liked'){
       const ac = Number(likeCounts[a.file] || 0);
@@ -623,7 +626,7 @@
       return a.file.localeCompare(b.file);
     }
     if(mode==='trending'){
-      // simple trending: most liked among newer items (or just shuffle for now)
+      // simple trending: most liked among newer items
       const isNew = a.file.includes('xor') ? 1 : 0;
       const ac = Number(likeCounts[a.file] || 0) * (isNew ? 1.5 : 1);
       const bc = Number(likeCounts[b.file] || 0) * (b.file.includes('xor') ? 1.5 : 1);
@@ -631,8 +634,10 @@
       return a.file.localeCompare(b.file);
     }
     if(mode==='new'){
-      const an=a.file.includes('robby_ca_')?1:0, bn=b.file.includes('robby_ca_')?1:0;
-      if(bn!==an) return bn-an;
+      // Higher index in the manifest = newer.
+      const ai = Number(orderIndex.get(a.file) ?? -1);
+      const bi = Number(orderIndex.get(b.file) ?? -1);
+      if(bi!==ai) return bi-ai;
       return a.file.localeCompare(b.file);
     }
     return a.file.localeCompare(b.file);
