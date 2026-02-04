@@ -648,12 +648,18 @@
     return s.includes(q);
   }
 
+  // Preserve feed scroll across modal open/close.
+  let feedScrollY = 0;
+  let lastFile = null;
+
   function openViewer(item, idx){
     currentIndex = idx;
+    lastFile = item?.file || null;
+
+    // Lock scroll without losing position (classic iOS/desktop safe pattern)
+    feedScrollY = window.scrollY || document.documentElement.scrollTop || 0;
     document.body.classList.add('modalOpen');
-    // prevent scroll chaining on mobile
-    document.documentElement.style.overflow = 'hidden';
-    document.body.style.overflow = 'hidden';
+    document.body.style.top = `-${feedScrollY}px`;
 
     $('modal').classList.add('open');
     $('vTitle').textContent = niceName(item.file);
@@ -665,14 +671,20 @@
   function closeViewer(){
     $('modal').classList.remove('open');
     $('frame').src = 'about:blank';
-    currentIndex = -1;
 
     document.body.classList.remove('modalOpen');
-    document.documentElement.style.overflow = '';
-    document.body.style.overflow = '';
-    document.body.style.position = '';
-    document.body.style.width = '';
-    document.body.style.height = '';
+    document.body.style.top = '';
+
+    // Restore scroll precisely
+    window.scrollTo(0, feedScrollY);
+
+    // Also ensure the last viewed item is visible in the grid
+    if(lastFile){
+      const el = document.getElementById('card-' + lastFile.replace(/\.html$/, ''));
+      if(el) el.scrollIntoView({ block: 'center', behavior: 'auto' });
+    }
+
+    currentIndex = -1;
   }
 
   function nav(delta){
@@ -689,6 +701,7 @@
   function card(item, idx){
     const el = document.createElement('div');
     el.className='card';
+    el.id = 'card-' + item.file.replace(/\.html$/, '');
     const chip = item.file.includes('robby_ca_') ? 'CELLULAR' : (item.file.includes('xor_') ? 'NEW:XOR' : 'SHADER');
 
     el.innerHTML = `
